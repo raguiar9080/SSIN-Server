@@ -1,0 +1,21 @@
+{
+  "name": "CMOV_Server",
+  "version": "0.0.0",
+  "description": "Mobility Payment for CMOV",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "mobility",
+    "smartphones"
+  ],
+  "author": "Rúben Aguiar",
+  "license": "LGPLv3",
+  "dependencies": {
+    "sqlite3": "~2.1.18",
+    "express": "~3.4.3",
+    "supervisor": "~0.5.6",
+    "moment": "~2.4.0"
+  }
+}
