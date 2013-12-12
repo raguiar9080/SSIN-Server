@@ -26,8 +26,9 @@ module.exports.Device=Device;
  */ 
  
  function Device(){
- 	this.id=null;
+ 	this.ip=null;
  	this.macAddress=null;
+ 	this.location=null;
  }
  /*
   *  FUNCTIONS
@@ -73,14 +74,14 @@ module.exports.Device=Device;
 			.run("BEGIN;")
 
 			// Create tables
-			.run("CREATE TABLE clients (id INTEGER PRIMARY KEY, name TEXT NOT NULL, password TEXT NOT NULL, email TEXT NOT NULL, phone TEXT NOT NULL, address TEXT NOT NULL, UNIQUE(email));")
-			.run("CREATE TABLE devices (id INTEGER PRIMARY KEY, macAddress TEXT NOT NULL, location TEXT NOT NULL);")
-			.run("CREATE TABLE clients_devices (id INTEGER PRIMARY KEY, key TEXT NOT NULL, client REFERENCES clients(id), device REFERENCES devices(id));")
+			.run("CREATE TABLE clients (clientId INTEGER PRIMARY KEY, name TEXT NOT NULL, password TEXT NOT NULL, email TEXT NOT NULL, phone TEXT NOT NULL, address TEXT NOT NULL, UNIQUE(email));")
+			.run("CREATE TABLE devices (deviceId INTEGER PRIMARY KEY, ip TEXT NOT NULL, macAddress TEXT, location TEXT, UNIQUE(ip));")
+			.run("CREATE TABLE clients_devices (linkId INTEGER PRIMARY KEY, name TEXT, key TEXT, validationKey TEXT, validationTime TEXT, client REFERENCES clients(clientId), device REFERENCES devices(deviceId));")
 
 			// Insert first data
 			//password is MD5 of 'ADMIN' is 73acd9a5972130b75066c82595a1fae3
 			.run("INSERT INTO clients (name, password, email, phone, address) VALUES ('ADMIN', '73acd9a5972130b75066c82595a1fae3', 'email@email.com', '00351966233545', 'Portugal');")
-			.run("INSERT INTO devices (macAddress, location) VALUES ('60b5fbb39cc81503021976c7aa155e11', 'Portugal');")
+			.run("INSERT INTO devices (ip) VALUES ('1.1.1.1');")
 			.run("COMMIT;");
 		});
 	}
@@ -98,31 +99,129 @@ sqliteDB.prototype.createClient=function(client, callback)
 		});
 }
 
+
 sqliteDB.prototype.login=function(client, device, callback)
 {
 	console.log("login client: ", client.name);	
 	if( typeof callback !== 'function')
 		throw new Error('Callback is not a function');
-	ticketConn.get("SELECT * FROM clients WHERE name=?",
-		[client.name],
-		function(err, row) {
-			if( row )
+
+	//force insert of device
+	ticketConn.run("INSERT INTO devices (ip) VALUES (?);",
+		[device.ip],
+		function(err){
+			//whether error or not, go grab it
+			ticketConn.get("SELECT * FROM devices WHERE ip=?",
+				[device.ip],
+				function(err, row_device) {
+					device.id=row_device.deviceId;
+					
+					ticketConn.get("SELECT * FROM clients WHERE name=?",
+						[client.name],
+						function(err, row_client) {
+							if( row_client )
+							{
+								console.log('Client Detected: ', row_client.clientId);
+								if (row_client.password != client.password)
+								{
+									console.log('Wrong Password');
+									//TODO diferent pass, count something
+									callback(err,null,null);
+								}
+								else
+								{
+									//client exists
+									ticketConn.get("SELECT * FROM devices, clients_devices WHERE devices.ip=? AND clients_devices.client=?",
+										[device.ip, row_client.clientId],
+										function(err, row2) {
+											if( row2 && row2.validationKey==null && row2.validationTime==null)
+											{
+												console.log('Everything OK');
+
+												//return the key
+												if (row_client.password == client.password)
+													callback(err, row2.key, 'KEY');
+											}
+											else
+											{
+												if (!row2)
+												{
+													console.log('Device Type: ', typeof(device.id), ' Client Type: ' ,typeof(row_client.clientId));
+													console.log('Device not linked: ' + Number(device.id));
+													//validationkey generation and saving to db
+													var randomKey = Math.random().toString(36).substr(2, 5);
+													console.log('Random Key: ', randomKey);
+													ticketConn.run("INSERT INTO clients_devices (validationKey, validationTime, client, device) VALUES (?, ?, ?, ?);",
+														[randomKey, timestamp(), row_client.clientId, device.id],
+														function(err){
+															callback(err,row_client,'USER');
+														});
+
+													//TODO send msg and id
+												}
+												else
+												{
+													//already exists ticket
+													console.log('Resending cellphone. Not linked');
+													console.log(randomKey,'-', timestamp(), '-',row_client.clientId, '-',row2.deviceId, '-',row2.linkId);
+
+													//validationkey generation and saving to db
+													var randomKey = Math.random().toString(36).substr(2, 5);
+													console.log('Random Key: ', randomKey);
+													ticketConn.run("UPDATE clients_devices SET validationKey = ?, validationTime = ?, client = ?, device =? WHERE linkId=?;",
+														[randomKey, timestamp(), row_client.clientId, Number(device.id), row2.linkId],
+														function(err){
+															callback(err,row_client,'USER');
+														});
+
+													//TODO send msg and id
+												}
+											}
+									});
+								}
+							}
+							else
+							{
+								//TODO no user, something is trying to find it
+								callback(err,null,null);
+							}
+					});
+			});
+	});
+}
+
+
+sqliteDB.prototype.linkDevice=function(client, device, linkName, validationKey, callback)
+{
+	console.log("linking device: ", device.ip, ' for client: ', client.id);
+	if( typeof callback !== 'function')
+		throw new Error('Callback is not a function');
+
+	var time=moment().subtract('minutes',5).format("YYYY-MM-DDTHH:mm:ss");
+
+	ticketConn.get("SELECT * FROM clients, clients_devices, devices WHERE clients.clientId=? AND clients_devices.validationKey=? AND devices.ip = ? AND clients_devices.validationTime>? ",
+		[client.id, validationKey, device.ip, time],
+		function(err, row_client_devices) {
+			if(row_client_devices)
 			{
-				if (row.pass == pass)
-				{
-					//TODO Check location of device, add if needed
-					callback(err,row );
-				}
-				else
-				{
-					//TODO diferent pass, count something
-					callback(err,null);
-				}
+				console.log(row_client_devices);
+				//remove validationKey and times
+				//assign key for the cookie/token
+				var randomKey = Math.random().toString(36);
+				ticketConn.run("UPDATE clients_devices SET validationKey = ?, validationTime = ?, name = ?,key = ? WHERE linkId= ?;",
+					[null, null, linkName, randomKey, row_client_devices.linkId],
+					function(err){
+						callback(err, randomKey);
+					});
+
 			}
 			else
 			{
-				//TODO no user, something is trying to find it
-				callback(err,null );
+				//no validation key found
+				console.log('Wrong Key');
+				callback(err,null);
 			}
+
 		});
+
 }
