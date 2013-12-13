@@ -10,16 +10,12 @@ module.exports.Device=Device;
 module.exports.Product=Product;
 
 /*
- *	CLIENT CLASS
+ *	Client CLASS
  */ 
  
  function Client(){
  	this.id=null;
  	this.name=null;
- 	this.tickets=null;
- 	this.nib=null;
- 	this.cardType=null;
- 	this.validity=null;
  }
 
 /*
@@ -27,9 +23,8 @@ module.exports.Product=Product;
  */ 
  
  function Device(){
- 	this.ip=null;
- 	this.macAddress=null;
- 	this.location=null;
+ 	this.id=null;
+ 	this.identifier=null;
  }
 
  /*
@@ -62,6 +57,7 @@ module.exports.Product=Product;
  *	DATABASE
  */
  
+ //initialize database file, creates if needed
  function sqliteDB(file) 
  {
 
@@ -87,16 +83,15 @@ module.exports.Product=Product;
 			.run("BEGIN;")
 
 			// Create tables
-			.run("CREATE TABLE clients (clientId INTEGER PRIMARY KEY, name TEXT NOT NULL, password TEXT NOT NULL, email TEXT NOT NULL, phone TEXT NOT NULL, address TEXT NOT NULL, UNIQUE(email));")
-			.run("CREATE TABLE devices (deviceId INTEGER PRIMARY KEY, ip TEXT NOT NULL, macAddress TEXT, location TEXT, UNIQUE(ip));")
-			.run("CREATE TABLE products (productId INTEGER PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL, image TEXT);")
+			.run("CREATE TABLE clients (clientId INTEGER PRIMARY KEY, name TEXT NOT NULL, password TEXT NOT NULL, email TEXT NOT NULL, phone TEXT NOT NULL, address TEXT NOT NULL, UNIQUE(name));")
+			.run("CREATE TABLE devices (deviceId INTEGER PRIMARY KEY, identifier TEXT NOT NULL, UNIQUE(identifier));")
+			.run("CREATE TABLE products (productId INTEGER PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL);")
 			.run("CREATE TABLE clients_products (buyId INTEGER PRIMARY KEY, client REFERENCES clients(clientId), product REFERENCES products(productId), date TEXT NOT NULL, confirmationCode TEXT, cancelationCode TEXT);")
 			.run("CREATE TABLE clients_devices (linkId INTEGER PRIMARY KEY, name TEXT, key TEXT, validationKey TEXT, validationTime TEXT, client REFERENCES clients(clientId), device REFERENCES devices(deviceId));")
 
 			// Insert first data
-			//password is MD5 of 'ADMIN' is 73acd9a5972130b75066c82595a1fae3
-			.run("INSERT INTO clients (name, password, email, phone, address) VALUES ('ADMIN', '73acd9a5972130b75066c82595a1fae3', 'email@email.com', '00351966233545', 'Portugal');")
-			.run("INSERT INTO devices (ip) VALUES ('1.1.1.1');")
+			//passwords are saved as plaintext. This is not the focus here. We needed to encrypt client side before sending
+			.run("INSERT INTO clients (name, password, email, phone, address) VALUES ('ADMIN', 'ADMIN', 'email@email.com', '00351966233545', 'Portugal');")
 			.run("INSERT INTO products (name,description) VALUES ('Justin Bieber CD', 'Melhor CD do Mundo'), ('Miley Cyrus', 'Best Hits. Wrecking Ball Included');")
 			.run("COMMIT;");
 		});
@@ -105,9 +100,10 @@ module.exports.Product=Product;
 
 sqliteDB.prototype.createClient=function(client, callback)
 {
-	console.log("adding client to db ", client.name);
+	console.log("Adding client to db ", client.name);
 	if( typeof callback !== 'function')
 		throw new Error('Callback is not a function');
+
 	ticketConn.run("INSERT INTO clients (name, password, email, phone, address) VALUES (?, ?, ?, ?, ?);",
 		[client.name, client.password, client.email, client.phone, client.address],
 		function(err){
@@ -122,52 +118,59 @@ sqliteDB.prototype.login=function(client, device, callback)
 	if( typeof callback !== 'function')
 		throw new Error('Callback is not a function');
 
-	//force insert of device
-	ticketConn.run("INSERT INTO devices (ip) VALUES (?);",
-		[device.ip],
+	//Try to insert the device
+	ticketConn.run("INSERT INTO devices (identifier) VALUES (?);",
+		[device.identifier],
 		function(err){
-			//whether error or not, go grab it
-			ticketConn.get("SELECT * FROM devices WHERE ip=?",
-				[device.ip],
+
+			//Whether sucess or not(already present) go grab it
+			ticketConn.get("SELECT * FROM devices WHERE identifier=?",
+				[device.identifier],
 				function(err, row_device) {
+
 					device.id=row_device.deviceId;
 					
+					//Grab the user
 					ticketConn.get("SELECT * FROM clients WHERE name=?",
 						[client.name],
 						function(err, row_client) {
+
 							if( row_client )
 							{
 								console.log('Client Detected: ', row_client.clientId);
 								if (row_client.password != client.password)
 								{
 									console.log('Wrong Password');
-									//TODO diferent pass, count something
+									//In this case we could log a possible attacker trying to access this account
+									//Above a number of attemps notify user. This is not implemented
 									callback(err,null,null);
 								}
 								else
 								{
-									//client exists
-									ticketConn.get("SELECT * FROM devices, clients_devices WHERE devices.ip=? AND clients_devices.client=?",
-										[device.ip, row_client.clientId],
+									//Client validated sucessfully
+									ticketConn.get("SELECT * FROM devices, clients_devices WHERE devices.identifier=? AND clients_devices.client=?",
+										[device.identifier, row_client.clientId],
 										function(err, row2) {
 											if( row2 && row2.validationKey==null && row2.validationTime==null)
 											{
+												//Device was linked to account. Just confirm and send the cookies that expire(sessionKey and clientId) again
 												console.log('Everything OK');
 												var result={};
 												result.key=row2.key;
 												result.clientId=row_client.clientId;
-												//return the key and the Id
 												callback(err, result, 'KEY');
 											}
 											else
 											{
+												//Device not linked. We need to send codes via cell/email
 												if (!row2)
 												{
-													console.log('Device Type: ', typeof(device.id), ' Client Type: ' ,typeof(row_client.clientId));
 													console.log('Device not linked: ' + Number(device.id));
-													//validationkey generation and saving to db
+													
+													//Validationkey generation and saving to db
 													var randomKey = Math.random().toString(36).substr(2, 5);
 													console.log('Random Key: ', randomKey);
+													//Insertion of current time allows the validationKey the possibility of expiring
 													ticketConn.run("INSERT INTO clients_devices (validationKey, validationTime, client, device) VALUES (?, ?, ?, ?);",
 														[randomKey, timestamp(), row_client.clientId, device.id],
 														function(err){
@@ -177,11 +180,11 @@ sqliteDB.prototype.login=function(client, device, callback)
 												}
 												else
 												{
-													//already exists ticket
-													console.log('Resending cellphone. Not linked');
-													console.log(randomKey,'-', timestamp(), '-',row_client.clientId, '-',row2.deviceId, '-',row2.linkId);
+													//Login was sucessfull but link was already found. Could be an expired validationkey by now
+													//Just send a new code and update on db
+													console.log('Resending cellphone.');
 
-													//validationkey generation and saving to db
+													//Validationkey generation and saving to db
 													var randomKey = Math.random().toString(36).substr(2, 5);
 													console.log('Random Key: ', randomKey);
 													ticketConn.run("UPDATE clients_devices SET validationKey = ?, validationTime = ?, client = ?, device =? WHERE linkId=?;",
@@ -196,10 +199,8 @@ sqliteDB.prototype.login=function(client, device, callback)
 								}
 							}
 							else
-							{
-								//TODO no user, something is trying to find it
+								//user not found
 								callback(err,null,null);
-							}
 					});
 			});
 	});
@@ -208,20 +209,21 @@ sqliteDB.prototype.login=function(client, device, callback)
 
 sqliteDB.prototype.linkDevice=function(client, device, linkName, validationKey, callback)
 {
-	console.log("linking device: ", device.ip, ' for client: ', client.id);
+	console.log("linking device: ", device.identifier, ' for client: ', client.id);
 	if( typeof callback !== 'function')
 		throw new Error('Callback is not a function');
 
+	//subtract 5 minutes from current time
+	//compare with date of token generation to see if it has expired
 	var time=moment().subtract('minutes',5).format("YYYY-MM-DDTHH:mm:ss");
 
-	ticketConn.get("SELECT * FROM clients, clients_devices, devices WHERE clients.clientId=clients_devices.client AND devices.deviceId=clients_devices.device AND clients.clientId=? AND clients_devices.validationKey=? AND devices.ip = ? AND clients_devices.validationTime>? ",
-		[client.id, validationKey, device.ip, time],
+	ticketConn.get("SELECT * FROM clients, clients_devices, devices WHERE clients.clientId=clients_devices.client AND devices.deviceId=clients_devices.device AND clients.clientId=? AND clients_devices.validationKey=? AND devices.identifier = ? AND clients_devices.validationTime>? ",
+		[client.id, validationKey, device.identifier, time],
 		function(err, row_client_devices) {
 			if(row_client_devices)
 			{
+				//Success. Erase cell tokens and correspondent times. Also insert and return the sessionkey
 				console.log(row_client_devices);
-				//remove validationKey and times
-				//assign key for the cookie/token
 				var randomKey = Math.random().toString(36);
 				ticketConn.run("UPDATE clients_devices SET validationKey = ?, validationTime = ?, name = ?,key = ? WHERE linkId= ?;",
 					[null, null, linkName, randomKey, row_client_devices.linkId],
@@ -232,7 +234,7 @@ sqliteDB.prototype.linkDevice=function(client, device, linkName, validationKey, 
 			}
 			else
 			{
-				//no validation key found
+				//Wrong validation key
 				console.log('Wrong Key');
 				callback(err,null);
 			}
@@ -247,8 +249,9 @@ sqliteDB.prototype.buyProduct=function(client, device, product, sessionKey, addr
 	if( typeof callback !== 'function')
 		throw new Error('Callback is not a function');
 
-	ticketConn.get("SELECT * FROM clients, clients_devices, devices WHERE clients.clientId=clients_devices.client AND devices.deviceId=clients_devices.device AND clients.clientId=? AND clients_devices.key=? AND devices.ip = ? ",
-		[client.id, sessionKey, device.ip],
+	// just checking if the device is linked to account and sessionKey is correct
+	ticketConn.get("SELECT * FROM clients, clients_devices, devices WHERE clients.clientId=clients_devices.client AND devices.deviceId=clients_devices.device AND clients.clientId=? AND clients_devices.key=? AND devices.identifier = ? ",
+		[client.id, sessionKey, device.identifier],
 		function(err, row_client_devices) {
 			if(!row_client_devices)
 				callback(err, null, null);
@@ -257,20 +260,26 @@ sqliteDB.prototype.buyProduct=function(client, device, product, sessionKey, addr
 			{
 				var out = {};
 				out.message = "";
+
+				//In here we should check to see if the address are too far from one another
+				//This would need aproval of purchases from different countries or too distante addresses.
+				//In our case we just check to see if the address is the same
 				var distance = 0;
 				if(row_client_devices.address != address)
-					distance = 1000;
+					distance = 1;
 
-				if(distance>200 || product.id==1)
+				//If a possible anomality has been detected. We check if the id is equal to one and marked
+				//as suspicous if such. In a real world cenario, a more mature solution would be needed
+				//by checking the bought history and search patterns.
+				if(distance==1 || product.id==1)
 				{
-					if(distance >200 )
+					if(distance ==1 )
 						out.message += 'Addressess don\'t match or too apart. ';
 					if(product.id==1)
 						out.message += 'Item is suspicious. ';
 
-					out.message+= 'Sending confirmation and cancelation code.';
-
-					//buy product but needs confirmation to send
+					//Buying product but needs confirmation to send
+					//We send both confirmation and cancelation codes for easy cancelation in case of unwanted access
 					out.confirmationCode = Math.random().toString(36).substr(2, 5);
 					console.log('confirmationCode: ', out.confirmationCode);
 					out.cancelationCode = Math.random().toString(36).substr(2, 5);
@@ -286,7 +295,7 @@ sqliteDB.prototype.buyProduct=function(client, device, product, sessionKey, addr
 				}
 				else
 				{
-					//buy product
+					//No suspicous activity detected. Just Buy the product
 					console.log('inserting product');
 					ticketConn.run("INSERT INTO clients_products (client, product, date) VALUES (?,?,?);",
 						[client.id,product.id,timestamp()],
@@ -304,8 +313,8 @@ sqliteDB.prototype.confirmBuy=function(client, device, code, sessionKey, callbac
 	if( typeof callback !== 'function')
 		throw new Error('Callback is not a function');
 
-	ticketConn.get("SELECT * FROM clients, clients_devices, devices WHERE clients.clientId=clients_devices.client AND devices.deviceId=clients_devices.device AND clients.clientId=? AND clients_devices.key=? AND devices.ip = ? ",
-		[client.id, sessionKey, device.ip],
+	ticketConn.get("SELECT * FROM clients, clients_devices, devices WHERE clients.clientId=clients_devices.client AND devices.deviceId=clients_devices.device AND clients.clientId=? AND clients_devices.key=? AND devices.identifier = ? ",
+		[client.id, sessionKey, device.identifier],
 		function(err, row_client_devices) {
 			if(!row_client_devices)
 				callback(err, null);
@@ -314,11 +323,14 @@ sqliteDB.prototype.confirmBuy=function(client, device, code, sessionKey, callbac
 			{
 				var time=moment().subtract('minutes',5).format("YYYY-MM-DDTHH:mm:ss");
 
+				//Check if the code received exists on the database for the current client.
+				//Confirmation code, only the confirmation code, has an expiration time to prevent multiple atempts
 				ticketConn.get("SELECT * FROM clients_products WHERE client = ? AND ((confirmationCode = ? AND date>?) OR cancelationCode = ?) ",
 					[client.id, code, time, code],
 					function(err,row_product) {
 						if(row_product && row_product.confirmationCode == code)
 						{
+							//Confirm Buying
 							ticketConn.run("UPDATE clients_products SET cancelationCode = ?, confirmationCode = ? WHERE buyId=?",
 								[null, null, row_product.buyId],
 								function(err){
@@ -327,6 +339,7 @@ sqliteDB.prototype.confirmBuy=function(client, device, code, sessionKey, callbac
 						}
 						else if(row_product && row_product.cancelationCode == code)
 						{
+							//Cancel Buying
 							ticketConn.run("DELETE FROM clients_products WHERE buyId=?",
 								[row_product.buyId],
 								function(err){
@@ -335,6 +348,7 @@ sqliteDB.prototype.confirmBuy=function(client, device, code, sessionKey, callbac
 						}
 						else
 						{
+							//Possible guessing/attack on the codes. Some measure could be taken
 							callback(err,null);
 							
 						}

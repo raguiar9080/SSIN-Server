@@ -3,8 +3,8 @@ var app = express();
 var	dbLib = require('./database');
 var	db = new dbLib.db('database.db');
 var fs = require('fs');
-var exec = require('child_process').exec,
-    child;
+var exec = require('child_process').exec;
+var child;
 var	port = 81;	// Default
 
 
@@ -37,6 +37,13 @@ if (args.length > 0) {
 console.log('Listening on port: ' + port)
 app.listen(port);
 
+/**************************************************************************************************************************************
+***************************************************************************************************************************************
+***************************************************************************************************************************************
+ READING HTML HARD CODED FILES
+ **************************************************************************************************************************************
+ **************************************************************************************************************************************
+ *************************************************************************************************************************************/
 
 var html_index;
 fs.readFile('./html/index.html', "binary", function (err, data) {
@@ -88,10 +95,16 @@ fs.readFile('./html/verify.html', "binary", function (err, data) {
 
 
 
-/*
-FUNCTIONS
-*/
+/**************************************************************************************************************************************
+***************************************************************************************************************************************
+***************************************************************************************************************************************
+ FUNCTIONS
+ **************************************************************************************************************************************
+ **************************************************************************************************************************************
+ *************************************************************************************************************************************/
 
+
+//responds with a premade page with home button and content is server response
 function respondToJSON(req, res, out, statusCode) {
 	var towrite = '<HTML><HEAD><TITLE>SSIN</TITLE></HEAD><BODY><a style="font-size:large;" href="http://localhost:81/">Home</a><p style="font-size:large;">' + JSON.stringify( out ) + '</p></BODY></HTML>';
 	res.writeHeader(200);
@@ -99,35 +112,39 @@ function respondToJSON(req, res, out, statusCode) {
 	res.end();
 }
 
+//responds with the static html pages loaded before
 function respond(req, res, out, statusCode) {
 	res.writeHeader(200);
 	res.write( out , "binary");
 	res.end();
 }
 
-/*
-ROUTES
-*/
+/**************************************************************************************************************************************
+***************************************************************************************************************************************
+***************************************************************************************************************************************
+ ROUTES
+ **************************************************************************************************************************************
+ **************************************************************************************************************************************
+ *************************************************************************************************************************************/
 
+//Main Page
 app.get('/', function(req, res) {
 	respond( req, res, html_index, 400);
 });
 
+
+//Register Static
 app.get('/register.html', function (req,res) {
 	respond( req, res, html_register, 400);
 });
 
+//Register REST
 app.post('/client/create',function (req,res) {
 	console.log('Method: ' + req.path + " [" + req.method + "]");
 	
 	var client = new dbLib.Client();
 	if( !req.body.name || !req.body.password ||  !req.body.email || !req.body.address ||!req.body.phone)
-	{
-		var out = {};
-		out.error = "Bad request";
-		respondToJSON( req, res, out, 400 );
-		
-	}
+		respondToJSON( req, res,  {error: 'Bad request'}, 400 );
 	else
 	{
 		client.name = req.body.name;
@@ -144,7 +161,6 @@ app.post('/client/create',function (req,res) {
 				code = 500;
 				out.id = -1;
 				out.error = 'Impossible to add client';
-
 				console.log('Error adding client: ' + err);
 			}
 			else
@@ -163,10 +179,12 @@ app.post('/client/create',function (req,res) {
 
 
 
-
+//Login Static
 app.get('/login.html', function (req,res) {
 	respond( req, res, html_login, 400);
 });
+
+//Login REST
 app.post('/client/login',function (req,res) {
 	console.log('Method: ' + req.path + " [" + req.method + "]");
 	console.log('IP: ' + req.connection.remoteAddress);
@@ -182,12 +200,15 @@ app.post('/client/login',function (req,res) {
 
 		if(!req.signedCookies.clientId)
 		{
+			//device doesnt have cookie to identify it stored.
+			//generate a key to add the machine to the server
 			var randomKey = Math.random().toString(36);
-			device.ip=randomKey;			
+			device.identifier=randomKey;			
 		}
 		else
 		{
-			device.ip=req.signedCookies.deviceId;
+			//device has cookie with identifier, simply retrieve
+			device.identifier=req.signedCookies.deviceId;
 		}
 
 		db.login(client, device, function(err,row, result) {
@@ -198,7 +219,6 @@ app.post('/client/login',function (req,res) {
 				code = 500;
 				out.id = -1;
 				out.error = 'Impossible to find client. Possible DB Error.';
-
 				console.log('Error login client: ' + err);
 			}
 			else {
@@ -206,8 +226,7 @@ app.post('/client/login',function (req,res) {
 				if (!row)
 				{
 					out.id = -1;
-					out.error = 'Wrong user or password';
-					
+					out.error = 'Wrong user or password';	
 					console.log('Fail login');
 				}
 				else
@@ -215,18 +234,24 @@ app.post('/client/login',function (req,res) {
 					out = row;
 					if(result=='KEY')
 					{
-						//login was completely sucessfull, returned key/token
+						//login was completely sucessfull, device was already linked. 
+						//Returned sessionkey/token, client identifier and device identifier
 						console.log('Logged in key : ' + out.key);
+
+						//both this cookies have lifetime to improve unwanted access on idle computers
 						res.cookie('sessionKey', out.key, { maxAge: 18000, signed: true });
 						res.cookie('clientId', out.clientId, { maxAge: 18000, signed: true });
-						res.cookie('deviceId', device.ip, {signed: true});
+
+						//doesnt need to be forced the lifetime. Let the browser decide
+						res.cookie('deviceId', device.identifier, {signed: true});
 					}
 					else
 					{
-						//need to validate via cellphone, returned my data
+						//Device not linked to account. Need to validate via cellphone,
+						//Email used here due to reasons explicit in report
+						//Returned client identifier and device identifier
 						console.log('Sending to cellphone');
 						var commandlinecommand = 'mailsend.exe -to ' + out.email +' -from r.aguiar9080@gmail.com  -ssl -smtp smtp.gmail.com -port 465 -sub "TOKEN" -M "' + out.key + '" +cc +bc -q -auth-plain -user "r.aguiar9080" -pass "d80Szh4312365413"';
-
 						child = exec(commandlinecommand,
 						  function (error, stdout, stderr) {
 						    console.log('stdout: ' + stdout);
@@ -236,8 +261,9 @@ app.post('/client/login',function (req,res) {
 						    }
 						});
 
+						//set cookies explained above
 						res.cookie('clientId', out.clientId, { maxAge: 18000, signed: true });
-						res.cookie('deviceId', device.ip, {signed: true});
+						res.cookie('deviceId', device.identifier, {signed: true});
 						
 						out="CONFIRMATION CODE SENT TO CELLPHONE/EMAIL";
 					}
@@ -250,15 +276,15 @@ app.post('/client/login',function (req,res) {
 	}
 });
 
-
+//Link Static
 app.get('/link.html', function (req,res) {
 	respond( req, res, html_link, 400);
 });
 
+//Link REST
 app.post('/device/link',function (req,res) {
 	console.log('Method: ' + req.path + " [" + req.method + "]");
 	console.log('IP: ' + req.connection.remoteAddress);
-	console.log('All Signed Cookies: ' + req.signedCookies);
 
 	if(!req.body.nameLink ||!req.body.validationKey || !req.signedCookies.clientId || !req.signedCookies.deviceId)
 		respondToJSON( req, res, {error: 'Bad request. No Login?'}, 400 );
@@ -266,12 +292,11 @@ app.post('/device/link',function (req,res) {
 	{
 		var client = new dbLib.Client();
 		var device = new dbLib.Device();
-		device.ip=req.signedCookies.deviceId;
+		device.identifier=req.signedCookies.deviceId;
 		client.id=req.signedCookies.clientId;
 			
 		var linkName = req.body.nameLink;
 		var validationKey = req.body.validationKey;
-
 
 
 		db.linkDevice(client, device, linkName, validationKey, function(err,row) {
@@ -282,7 +307,6 @@ app.post('/device/link',function (req,res) {
 				code = 500;
 				out.id = -1;
 				out.error = 'Impossible to find device. Possible DB Error.';
-
 				console.log('Error login client: ' + err);
 			}
 			else {
@@ -291,7 +315,6 @@ app.post('/device/link',function (req,res) {
 				{
 					out.id = -1;
 					out.error = 'Wrong key or expired. Try login again.';
-					
 					console.log('Fail link');
 				}
 				else
@@ -317,8 +340,8 @@ app.get('/buy.html', function (req,res) {
 app.post('/product/buy',function (req,res) {
 	console.log('Method: ' + req.path + " [" + req.method + "]");
 	console.log('IP: ' + req.connection.remoteAddress);
-	console.log('All Signed Cookies: ' + req.signedCookies);
 
+	//need for all the cookies
 	if(!req.body.product || !req.body.address || !req.signedCookies.sessionKey || !req.signedCookies.clientId || !req.signedCookies.deviceId)
 		respondToJSON( req, res, {error: 'Bad request. No Login?'}, 400 );
 	else
@@ -326,14 +349,12 @@ app.post('/product/buy',function (req,res) {
 		var client = new dbLib.Client();
 		var device = new dbLib.Device();
 		var product = new dbLib.Product();
-		device.ip=req.signedCookies.deviceId;
+		device.identifier=req.signedCookies.deviceId;
 		client.id=req.signedCookies.clientId;
 		product.id=req.body.product;
 		var sessionKey = req.signedCookies.sessionKey;
 		var address = req.body.address;
 
-
-		console.log(client, '-', device,'-', product,'-', sessionKey);
 		db.buyProduct(client, device, product, sessionKey, address, function(err,row,result) {
 			var out = {};
 			var code;
@@ -356,12 +377,10 @@ app.post('/product/buy',function (req,res) {
 					out = row;
 					if(result=='NEED_CONFIRM')
 					{
+						//Something fishy was detected. Buy is on hold. Validation by cell/email code needee
 						console.log('Buy needs confirmation');
 
 						var commandlinecommand = 'mailsend.exe -to ' + out.email +' -from r.aguiar9080@gmail.com  -ssl -smtp smtp.gmail.com -port 465 -sub "TOKEN" -M "CONFIRM: ' + out.confirmationCode + '  -  CANCEL: ' + out.cancelationCode + '" +cc +bc -q -auth-plain -user "r.aguiar9080" -pass "d80Szh4312365413"';
-
-						console.log("commandlinecommand: " + commandlinecommand);
-
 
 						child = exec(commandlinecommand,
 						  function (error, stdout, stderr) {
@@ -372,12 +391,12 @@ app.post('/product/buy',function (req,res) {
 						    }
 						});
 						out = {};
-						out = row.message + 'SUSPICIOUS. I NEED CONFIRMATION';
+						out = row.message + 'Needing cellphone/email confirmation';
 					}
 					else
 					{
 						out = row;
-						//buy was completely sucessfull
+						//buy was completely sucessfull. No anomalities detected
 						console.log('Buy sucessfull : ' + out);
 					}
 				}
@@ -396,7 +415,6 @@ app.get('/verify.html', function (req,res) {
 app.post('/product/verify',function (req,res) {
 	console.log('Method: ' + req.path + " [" + req.method + "]");
 	console.log('IP: ' + req.connection.remoteAddress);
-	console.log('All Signed Cookies: ' + req.signedCookies);
 
 	if(!req.body.code || !req.signedCookies.sessionKey || !req.signedCookies.clientId|| !req.signedCookies.deviceId)
 		respondToJSON( req, res, {error: 'Bad request. No Login?'}, 400 );
@@ -404,7 +422,7 @@ app.post('/product/verify',function (req,res) {
 	{
 		var client = new dbLib.Client();
 		var device = new dbLib.Device();
-		device.ip=req.signedCookies.deviceId;
+		device.identifier=req.signedCookies.deviceId;
 		client.id=req.signedCookies.clientId;
 		var sessionKey = req.signedCookies.sessionKey;
 		var code = req.body.code;
@@ -429,7 +447,7 @@ app.post('/product/verify',function (req,res) {
 				else
 				{
 					out=row;
-					console.log('Reedem sucessfull : ' + out);
+					console.log('Operation sucessfull : ' + out);
 					
 				}
 			}

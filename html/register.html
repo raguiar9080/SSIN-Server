@@ -11,23 +11,23 @@
 		<form action="http://localhost:81/client/create" id="myform" method="post">
 			<p>
 				<label for='Username'>Username:</label>
-				<input type="text" id="Username" name="name" />
+				<input type="text" id="Username" name="name" required="true" />
 			</p>
 			<p>
 				<label for='Password'>Password:</label>
-				<input type="password" id="Password" name="password" />
+				<input type="password" id="Password" name="password" required="true" />
 			</p>
 			<p>
 				<label for='Email'>Email:</label>
-				<input type="text" id="Email" name="email" />
+				<input type="text" id="Email" name="email" required="true" />
 			</p>
 			<p>
 				<label for='Phone'>Phone:</label>
-				<input type="text" id="Phone" name="phone" />
+				<input type="text" id="Phone" name="phone" required="true" />
 			</p>
 			<p>
 				<label for='Address'>Address:</label>
-				<textarea cols="20" rows="5" id="address" name="address"></textarea>
+				<textarea cols="20" rows="5" id="address" name="address" required="true" ></textarea>
 			</p>
 			<p>
 				<input type="submit" name="submit" value="Create">
