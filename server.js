@@ -179,7 +179,16 @@ app.post('/client/login',function (req,res) {
 		var device = new dbLib.Device();
 		client.name=req.body.name;
 		client.password=req.body.password;
-		device.ip=req.connection.remoteAddress;
+
+		if(!req.signedCookies.clientId)
+		{
+			var randomKey = Math.random().toString(36);
+			device.ip=randomKey;			
+		}
+		else
+		{
+			device.ip=req.signedCookies.deviceId;
+		}
 
 		db.login(client, device, function(err,row, result) {
 			var out = {};
@@ -210,6 +219,7 @@ app.post('/client/login',function (req,res) {
 						console.log('Logged in key : ' + out.key);
 						res.cookie('sessionKey', out.key, { maxAge: 900000, signed: true });
 						res.cookie('clientId', out.clientId, { maxAge: 900000, signed: true });
+						res.cookie('deviceId', device.ip, {signed: true});
 					}
 					else
 					{
@@ -226,7 +236,9 @@ app.post('/client/login',function (req,res) {
 						    }
 						});
 
-						res.cookie('clientId', out.clientId, { maxAge: 900000, signed: true });7
+						res.cookie('clientId', out.clientId, { maxAge: 900000, signed: true });
+						res.cookie('deviceId', device.ip, {signed: true});
+						
 						out="CONFIRMATION CODE SENT TO CELLPHONE/EMAIL";
 					}
 				}
@@ -248,13 +260,13 @@ app.post('/device/link',function (req,res) {
 	console.log('IP: ' + req.connection.remoteAddress);
 	console.log('All Signed Cookies: ' + req.signedCookies);
 
-	if(!req.body.nameLink ||!req.body.validationKey || !req.signedCookies.clientId)
+	if(!req.body.nameLink ||!req.body.validationKey || !req.signedCookies.clientId || !req.signedCookies.deviceId)
 		respondToJSON( req, res, {error: 'Bad request. No Login?'}, 400 );
 	else
 	{
 		var client = new dbLib.Client();
 		var device = new dbLib.Device();
-		device.ip=req.connection.remoteAddress;
+		device.ip=req.signedCookies.deviceId;
 		client.id=req.signedCookies.clientId;
 			
 		var linkName = req.body.nameLink;
@@ -307,14 +319,14 @@ app.post('/product/buy',function (req,res) {
 	console.log('IP: ' + req.connection.remoteAddress);
 	console.log('All Signed Cookies: ' + req.signedCookies);
 
-	if(!req.body.product || !req.body.address || !req.signedCookies.sessionKey || !req.signedCookies.clientId)
+	if(!req.body.product || !req.body.address || !req.signedCookies.sessionKey || !req.signedCookies.clientId || !req.signedCookies.deviceId)
 		respondToJSON( req, res, {error: 'Bad request. No Login?'}, 400 );
 	else
 	{
 		var client = new dbLib.Client();
 		var device = new dbLib.Device();
 		var product = new dbLib.Product();
-		device.ip=req.connection.remoteAddress;
+		device.ip=req.signedCookies.deviceId;
 		client.id=req.signedCookies.clientId;
 		product.id=req.body.product;
 		var sessionKey = req.signedCookies.sessionKey;
@@ -386,13 +398,13 @@ app.post('/product/verify',function (req,res) {
 	console.log('IP: ' + req.connection.remoteAddress);
 	console.log('All Signed Cookies: ' + req.signedCookies);
 
-	if(!req.body.code || !req.signedCookies.sessionKey || !req.signedCookies.clientId)
+	if(!req.body.code || !req.signedCookies.sessionKey || !req.signedCookies.clientId|| !req.signedCookies.deviceId)
 		respondToJSON( req, res, {error: 'Bad request. No Login?'}, 400 );
 	else
 	{
 		var client = new dbLib.Client();
 		var device = new dbLib.Device();
-		device.ip=req.connection.remoteAddress;
+		device.ip=req.signedCookies.deviceId;
 		client.id=req.signedCookies.clientId;
 		var sessionKey = req.signedCookies.sessionKey;
 		var code = req.body.code;
