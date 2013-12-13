@@ -217,8 +217,8 @@ app.post('/client/login',function (req,res) {
 					{
 						//login was completely sucessfull, returned key/token
 						console.log('Logged in key : ' + out.key);
-						res.cookie('sessionKey', out.key, { maxAge: 900000, signed: true });
-						res.cookie('clientId', out.clientId, { maxAge: 900000, signed: true });
+						res.cookie('sessionKey', out.key, { maxAge: 18000, signed: true });
+						res.cookie('clientId', out.clientId, { maxAge: 18000, signed: true });
 						res.cookie('deviceId', device.ip, {signed: true});
 					}
 					else
@@ -236,7 +236,7 @@ app.post('/client/login',function (req,res) {
 						    }
 						});
 
-						res.cookie('clientId', out.clientId, { maxAge: 900000, signed: true });
+						res.cookie('clientId', out.clientId, { maxAge: 18000, signed: true });
 						res.cookie('deviceId', device.ip, {signed: true});
 						
 						out="CONFIRMATION CODE SENT TO CELLPHONE/EMAIL";
@@ -299,7 +299,7 @@ app.post('/device/link',function (req,res) {
 					out = row;
 					//login was completely sucessfull, returned key/token
 					console.log('Logged in key : ' + row);
-					res.cookie('sessionKey', row, { maxAge: 900000, signed: true });
+					res.cookie('sessionKey', row, { maxAge: 18000, signed: true });
 				}
 			}
 
