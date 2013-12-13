@@ -8,7 +8,7 @@ var	port = 81;	// Default
 //configuration
 app.configure(function() {
 	app.use(express.bodyParser());
-	app.use(express.cookieParser("asd"));
+	app.use(express.cookieParser("mykey"));
 
 	app.use(function (req, res, next) {
 		res.setHeader('Server', 'MobilePayment');
@@ -43,6 +43,38 @@ fs.readFile('./html/index.html', "binary", function (err, data) {
     html_index = data;
 });
 
+var html_register;
+fs.readFile('./html/register.html', "binary", function (err, data) {
+    if (err) {
+        throw err;
+    }
+    html_register = data;
+});
+
+var html_login;
+fs.readFile('./html/login.html', "binary", function (err, data) {
+    if (err) {
+        throw err;
+    }
+    html_login = data;
+});
+
+var html_link;
+fs.readFile('./html/link.html', "binary", function (err, data) {
+    if (err) {
+        throw err;
+    }
+    html_link = data;
+});
+
+var html_buy;
+fs.readFile('./html/buy.html', "binary", function (err, data) {
+    if (err) {
+        throw err;
+    }
+    html_buy = data;
+});
+
 
 /*
 FUNCTIONS
@@ -74,6 +106,10 @@ ROUTES
 
 app.get('/', function(req, res) {
 	respond( req, res, html_index, 400);
+});
+
+app.get('/register.html', function (req,res) {
+	respond( req, res, html_register, 400);
 });
 
 app.post('/client/create',function (req,res) {
@@ -120,9 +156,12 @@ app.post('/client/create',function (req,res) {
 	}
 });
 
-//LOG ACCOUNT
-//POST PARAMS: name string,password string
-//RETURN JSON {id:<clientid>}
+
+
+
+app.get('/login.html', function (req,res) {
+	respond( req, res, html_login, 400);
+});
 app.post('/client/login',function (req,res) {
 	console.log('Method: ' + req.path + " [" + req.method + "]");
 	console.log('IP: ' + req.connection.remoteAddress);
@@ -163,14 +202,15 @@ app.post('/client/login',function (req,res) {
 					if(result=='KEY')
 					{
 						//login was completely sucessfull, returned key/token
-						console.log('Logged in key : ' + row);
-						res.cookie('sessionkey', row, { maxAge: 900000, signed: true });
+						console.log('Logged in key : ' + out.key);
+						res.cookie('sessionKey', out.key, { maxAge: 900000, signed: true });
+						res.cookie('clientId', out.clientId, { maxAge: 900000, signed: true });
 					}
 					else
 					{
 						//need to validate via cellphone, returned my data
 						console.log('Sending to cellphone');
-						//TODO save user id
+						res.cookie('clientId', out.clientId, { maxAge: 900000, signed: true });
 					}
 				}
 			}
@@ -181,25 +221,27 @@ app.post('/client/login',function (req,res) {
 	}
 });
 
-//LOG ACCOUNT
-//POST PARAMS: name string,password string
-//RETURN JSON {id:<clientid>}
+
+app.get('/link.html', function (req,res) {
+	respond( req, res, html_link, 400);
+});
+
 app.post('/device/link',function (req,res) {
 	console.log('Method: ' + req.path + " [" + req.method + "]");
 	console.log('IP: ' + req.connection.remoteAddress);
+	console.log('All Signed Cookies: ' + req.signedCookies);
 
-	if(!req.body.nameLink ||!req.body.validationKey || !req.body.user)
-		respondToJSON( req, res, {error: 'Bad request'}, 400 );
+	if(!req.body.nameLink ||!req.body.validationKey || !req.signedCookies.clientId)
+		respondToJSON( req, res, {error: 'Bad request. No Login?'}, 400 );
 
 
-		var client = new dbLib.Client();
-		var device = new dbLib.Device();
-		device.ip=req.connection.remoteAddress;
-		client.id=req.body.user;
+	var client = new dbLib.Client();
+	var device = new dbLib.Device();
+	device.ip=req.connection.remoteAddress;
+	client.id=req.signedCookies.clientId;
 		
 	var linkName = req.body.nameLink;
 	var validationKey = req.body.validationKey;
-	var linkName = req.body.nameLink;
 
 
 
@@ -219,7 +261,7 @@ app.post('/device/link',function (req,res) {
 			if (!row)
 			{
 				out.id = -1;
-				out.error = 'Wrong key or userid';
+				out.error = 'Wrong key or expired. Try login again.';
 				
 				console.log('Fail link');
 			}
@@ -228,7 +270,71 @@ app.post('/device/link',function (req,res) {
 				out = row;
 				//login was completely sucessfull, returned key/token
 				console.log('Logged in key : ' + row);
-				res.cookie('sessionkey', row, { maxAge: 900000, signed: true });
+				res.cookie('sessionKey', row, { maxAge: 900000, signed: true });
+			}
+		}
+
+		respondToJSON( req, res, out, code );
+
+	});
+});
+
+
+app.get('/buy.html', function (req,res) {
+	respond( req, res, html_buy, 400);
+});
+
+app.post('/product/buy',function (req,res) {
+	console.log('Method: ' + req.path + " [" + req.method + "]");
+	console.log('IP: ' + req.connection.remoteAddress);
+	console.log('All Signed Cookies: ' + req.signedCookies);
+
+	if(!req.body.product || !req.body.address || !req.signedCookies.sessionKey || !req.signedCookies.clientId)
+		respondToJSON( req, res, {error: 'Bad request. No Login?'}, 400 );
+
+
+	var client = new dbLib.Client();
+	var device = new dbLib.Device();
+	var product = new dbLib.Product();
+	device.ip=req.connection.remoteAddress;
+	client.id=req.signedCookies.clientId;
+	product.id=req.body.product;
+	var sessionKey = req.signedCookies.sessionKey;
+	var address = req.body.address;
+
+
+	console.log(client, '-', device,'-', product,'-', sessionKey);
+	db.buyProduct(client, device, product, sessionKey, address, function(err,row,result) {
+		var out = {};
+		var code;
+		if( err ) {
+			code = 500;
+			out.id = -1;
+			out.error = 'Impossible to buy product. Possible DB Error.';
+			console.log('Error buy product: ' + err);
+		}
+		else {
+			code = 200;
+			if (!row && !result)
+			{
+				out.id = -1;
+				out.error = 'Wrong key or expired. Try login again.';
+				console.log('Fail buy');
+			}
+			else
+			{
+				
+				if(result=='NEED_CONFIRM')
+				{
+					out = 'SUSPICIOUS. I NEED CONFIRMATION';
+					console.log('Buy needs confirmation');
+				}
+				else
+				{
+					out = row;
+					//buy was completely sucessfull
+					console.log('Buy sucessfull : ' + out);
+				}
 			}
 		}
 

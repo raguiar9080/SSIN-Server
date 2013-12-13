@@ -1,0 +1,25 @@
+<HTML>
+
+	<HEAD>
+		<TITLE>SSIN</TITLE>
+	</HEAD>
+
+	<BODY>
+		<p style="font-size:large;">LINK DEVICE TO USER</p>
+
+		<form action="http://localhost:81/device/link" id="myform" method="post">
+			<p>
+				<label for='Username'>Name for PC:</label>
+				<input type="text" id="Username" name="nameLink" />
+			</p>
+			<p>
+				<label for='ValidationKey'>Token Received On Cell:</label>
+				<input type="text" id="ValidationKey" name="validationKey" />
+			</p>
+			<p>
+				<input type="submit" name="submit" value="Link">
+			</p>
+		</form>
+	</BODY>
+
+</HTML>

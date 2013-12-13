@@ -7,6 +7,7 @@ ticketConn = undefined;
 module.exports.db=sqliteDB;
 module.exports.Client=Client;
 module.exports.Device=Device;
+module.exports.Product=Product;
 
 /*
  *	CLIENT CLASS
@@ -30,6 +31,18 @@ module.exports.Device=Device;
  	this.macAddress=null;
  	this.location=null;
  }
+
+ /*
+ *	Product CLASS
+ */ 
+ 
+ function Product(){
+ 	this.name=null;
+ 	this.description=null;
+ 	this.id=null;
+ }
+
+
  /*
   *  FUNCTIONS
   */
@@ -76,12 +89,15 @@ module.exports.Device=Device;
 			// Create tables
 			.run("CREATE TABLE clients (clientId INTEGER PRIMARY KEY, name TEXT NOT NULL, password TEXT NOT NULL, email TEXT NOT NULL, phone TEXT NOT NULL, address TEXT NOT NULL, UNIQUE(email));")
 			.run("CREATE TABLE devices (deviceId INTEGER PRIMARY KEY, ip TEXT NOT NULL, macAddress TEXT, location TEXT, UNIQUE(ip));")
+			.run("CREATE TABLE products (productId INTEGER PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL, image TEXT);")
+			.run("CREATE TABLE clients_products (buyId INTEGER PRIMARY KEY, client REFERENCES clients(clientId), product REFERENCES products(productId), date TEXT NOT NULL, confirmationCode TEXT, cancelationCode TEXT);")
 			.run("CREATE TABLE clients_devices (linkId INTEGER PRIMARY KEY, name TEXT, key TEXT, validationKey TEXT, validationTime TEXT, client REFERENCES clients(clientId), device REFERENCES devices(deviceId));")
 
 			// Insert first data
 			//password is MD5 of 'ADMIN' is 73acd9a5972130b75066c82595a1fae3
 			.run("INSERT INTO clients (name, password, email, phone, address) VALUES ('ADMIN', '73acd9a5972130b75066c82595a1fae3', 'email@email.com', '00351966233545', 'Portugal');")
 			.run("INSERT INTO devices (ip) VALUES ('1.1.1.1');")
+			.run("INSERT INTO products (name,description) VALUES ('Justin Bieber CD', 'Melhor CD do Mundo'), ('Miley Cyrus', 'Best Hits. Wrecking Ball Included');")
 			.run("COMMIT;");
 		});
 	}
@@ -137,10 +153,11 @@ sqliteDB.prototype.login=function(client, device, callback)
 											if( row2 && row2.validationKey==null && row2.validationTime==null)
 											{
 												console.log('Everything OK');
-
-												//return the key
-												if (row_client.password == client.password)
-													callback(err, row2.key, 'KEY');
+												var result={};
+												result.key=row2.key;
+												result.clientId=row_client.clientId;
+												//return the key and the Id
+												callback(err, result, 'KEY');
 											}
 											else
 											{
@@ -154,10 +171,10 @@ sqliteDB.prototype.login=function(client, device, callback)
 													ticketConn.run("INSERT INTO clients_devices (validationKey, validationTime, client, device) VALUES (?, ?, ?, ?);",
 														[randomKey, timestamp(), row_client.clientId, device.id],
 														function(err){
+															//TODO send msg
+
 															callback(err,row_client,'USER');
 														});
-
-													//TODO send msg and id
 												}
 												else
 												{
@@ -171,10 +188,9 @@ sqliteDB.prototype.login=function(client, device, callback)
 													ticketConn.run("UPDATE clients_devices SET validationKey = ?, validationTime = ?, client = ?, device =? WHERE linkId=?;",
 														[randomKey, timestamp(), row_client.clientId, Number(device.id), row2.linkId],
 														function(err){
+															//TODO send msg
 															callback(err,row_client,'USER');
 														});
-
-													//TODO send msg and id
 												}
 											}
 									});
@@ -199,7 +215,7 @@ sqliteDB.prototype.linkDevice=function(client, device, linkName, validationKey, 
 
 	var time=moment().subtract('minutes',5).format("YYYY-MM-DDTHH:mm:ss");
 
-	ticketConn.get("SELECT * FROM clients, clients_devices, devices WHERE clients.clientId=? AND clients_devices.validationKey=? AND devices.ip = ? AND clients_devices.validationTime>? ",
+	ticketConn.get("SELECT * FROM clients, clients_devices, devices WHERE clients.clientId=clients_devices.client AND devices.deviceId=clients_devices.device AND clients.clientId=? AND clients_devices.validationKey=? AND devices.ip = ? AND clients_devices.validationTime>? ",
 		[client.id, validationKey, device.ip, time],
 		function(err, row_client_devices) {
 			if(row_client_devices)
@@ -224,4 +240,104 @@ sqliteDB.prototype.linkDevice=function(client, device, linkName, validationKey, 
 
 		});
 
+}
+
+sqliteDB.prototype.buyProduct=function(client, device, product, sessionKey, address, callback)
+{
+	console.log("buying product: ", product.id, ' for client: ', client.id);
+	if( typeof callback !== 'function')
+		throw new Error('Callback is not a function');
+
+	ticketConn.get("SELECT * FROM clients, clients_devices, devices WHERE clients.clientId=clients_devices.client AND devices.deviceId=clients_devices.device AND clients.clientId=? AND clients_devices.key=? AND devices.ip = ? ",
+		[client.id, sessionKey, device.ip],
+		function(err, row_client_devices) {
+			if(!row_client_devices)
+				callback(err, null, null);
+			
+			else
+			{
+				var out = '';
+				var distance = 0;
+				if(row_client_devices.address != address)
+					distance = 1000;
+
+				if(distance>200 || product.id==1)
+				{
+					if(distance >200 )
+						out += 'Addressess don\'t match or too apart. ';
+					if(product.id==1)
+						out += 'Item is suspicious. ';
+
+					out+= 'Sending confirmation and cancelation code.';
+
+					//buy product but needs confirmation to send
+					var confirmationCode = Math.random().toString(36).substr(2, 5);
+					console.log('confirmationCode: ', confirmationCode);
+					var cancelationCode = Math.random().toString(36).substr(2, 5);
+					console.log('cancelationCode: ', cancelationCode);
+														
+														
+					ticketConn.run("INSERT INTO clients_products (client, product, date, confirmationCode, cancelationCode) VALUES (?,?,?,?,?);",
+						[client.id,product.id,timestamp(), confirmationCode, cancelationCode],
+						function(err){
+							callback(err,out,'NEED_CONFIRM.');
+					});
+				}
+				else
+				{
+					//buy product
+					console.log('inserting product');
+					ticketConn.run("INSERT INTO clients_products (client, product, date) VALUES (?,?,?);",
+						[client.id,product.id,timestamp()],
+						function(err){
+							callback(err, this.lastID,'OK');
+					});
+				}
+			}
+	});
+}
+
+sqliteDB.prototype.confirmBuy=function(client, device, code, sessionKey, callback)
+{
+	console.log("confirming buy product: ", product.id, ' for client: ', client.id);
+	if( typeof callback !== 'function')
+		throw new Error('Callback is not a function');
+
+	ticketConn.get("SELECT * FROM clients, clients_devices, devices WHERE clients.clientId=clients_devices.client AND devices.deviceId=clients_devices.device AND clients.clientId=? AND clients_devices.key=? AND devices.ip = ? ",
+		[client.id, sessionKey, device.ip],
+		function(err, row_client_devices) {
+			if(!row_client_devices)
+				callback(err, null, null);
+			
+			else
+			{
+				var distance = 0;
+				//TODO check address
+				if(distance>200 || product.id==1)
+				{
+					//buy product but needs confirmation to send
+					var confirmationCode = Math.random().toString(36).substr(2, 5);
+					console.log('confirmationCode: ', confirmationCode);
+					var cancelationCode = Math.random().toString(36).substr(2, 5);
+					console.log('cancelationCode: ', cancelationCode);
+														
+														
+					ticketConn.run("INSERT INTO clients_products (client, product, date, confirmationCode, cancelationCode) VALUES (?,?,?,?,?);",
+						[client.id,product.id,timestamp(), confirmationCode, cancelationCode],
+						function(err){
+							callback(err,null,'NEED_CONFIRM.');
+					});
+				}
+				else
+				{
+					//buy product
+					console.log('inserting product');
+					ticketConn.run("INSERT INTO clients_products (client, product, date) VALUES (?,?,?);",
+						[client.id,product.id,timestamp()],
+						function(err){
+							callback(err, this.lastID,'OK');
+					});
+				}
+			}
+	});
 }
