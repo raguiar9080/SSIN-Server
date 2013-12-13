@@ -203,13 +203,17 @@ app.post('/client/login',function (req,res) {
 			//device doesnt have cookie to identify it stored.
 			//generate a key to add the machine to the server
 			var randomKey = Math.random().toString(36);
-			device.identifier=randomKey;			
+			device.identifier=randomKey;
+			console.log('No device cookie stored');
 		}
 		else
 		{
 			//device has cookie with identifier, simply retrieve
 			device.identifier=req.signedCookies.deviceId;
+			console.log('No device cookie detected');
 		}
+
+		console.log('Random Key: ' + device.identifier);
 
 		db.login(client, device, function(err,row, result) {
 			var out = {};
@@ -239,8 +243,8 @@ app.post('/client/login',function (req,res) {
 						console.log('Logged in key : ' + out.key);
 
 						//both this cookies have lifetime to improve unwanted access on idle computers
-						res.cookie('sessionKey', out.key, { maxAge: 18000, signed: true });
-						res.cookie('clientId', out.clientId, { maxAge: 18000, signed: true });
+						res.cookie('sessionKey', out.key, { maxAge: 720000, signed: true });
+						res.cookie('clientId', out.clientId, { maxAge: 720000, signed: true });
 
 						//doesnt need to be forced the lifetime. Let the browser decide
 						res.cookie('deviceId', device.identifier, {signed: true});
@@ -251,7 +255,8 @@ app.post('/client/login',function (req,res) {
 						//Email used here due to reasons explicit in report
 						//Returned client identifier and device identifier
 						console.log('Sending to cellphone');
-						var commandlinecommand = 'mailsend.exe -to ' + out.email +' -from r.aguiar9080@gmail.com  -ssl -smtp smtp.gmail.com -port 465 -sub "TOKEN" -M "' + out.key + '" +cc +bc -q -auth-plain -user "r.aguiar9080" -pass "d80Szh4312365413"';
+						var commandlinecommand = 'mailsend.exe -to ' + out.email +' -from ze.francisco.teste@gmail.com  -ssl -smtp smtp.gmail.com -port 465 -sub "TOKEN" -M "' + out.key + '" +cc +bc -q -auth-plain -user "ze.francisco.teste" -pass "12365413"';
+						console.log("email sending: " + commandlinecommand);
 						child = exec(commandlinecommand,
 						  function (error, stdout, stderr) {
 						    console.log('stdout: ' + stdout);
@@ -262,7 +267,7 @@ app.post('/client/login',function (req,res) {
 						});
 
 						//set cookies explained above
-						res.cookie('clientId', out.clientId, { maxAge: 18000, signed: true });
+						res.cookie('clientId', out.clientId, { maxAge: 720000, signed: true });
 						res.cookie('deviceId', device.identifier, {signed: true});
 						
 						out="CONFIRMATION CODE SENT TO CELLPHONE/EMAIL";
@@ -322,7 +327,7 @@ app.post('/device/link',function (req,res) {
 					out = row;
 					//login was completely sucessfull, returned key/token
 					console.log('Logged in key : ' + row);
-					res.cookie('sessionKey', row, { maxAge: 18000, signed: true });
+					res.cookie('sessionKey', row, { maxAge: 720000, signed: true });
 				}
 			}
 
@@ -380,7 +385,8 @@ app.post('/product/buy',function (req,res) {
 						//Something fishy was detected. Buy is on hold. Validation by cell/email code needee
 						console.log('Buy needs confirmation');
 
-						var commandlinecommand = 'mailsend.exe -to ' + out.email +' -from r.aguiar9080@gmail.com  -ssl -smtp smtp.gmail.com -port 465 -sub "TOKEN" -M "CONFIRM: ' + out.confirmationCode + '  -  CANCEL: ' + out.cancelationCode + '" +cc +bc -q -auth-plain -user "r.aguiar9080" -pass "d80Szh4312365413"';
+						var commandlinecommand = 'mailsend.exe -to ' + out.email +' -from ze.francisco.teste@gmail.com  -ssl -smtp smtp.gmail.com -port 465 -sub "TOKEN" -M "CONFIRM: ' + out.confirmationCode + '  -  CANCEL: ' + out.cancelationCode + '" +cc +bc -q -auth-plain -user "ze.francisco.teste" -pass "12365413"';
+						console.log("email sending: " + commandlinecommand);
 
 						child = exec(commandlinecommand,
 						  function (error, stdout, stderr) {

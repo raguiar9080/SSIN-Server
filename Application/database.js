@@ -148,7 +148,7 @@ sqliteDB.prototype.login=function(client, device, callback)
 								else
 								{
 									//Client validated sucessfully
-									ticketConn.get("SELECT * FROM devices, clients_devices WHERE devices.identifier=? AND clients_devices.client=?",
+									ticketConn.get("SELECT * FROM devices, clients_devices WHERE clients_devices.device = devices.id AND devices.identifier=? AND clients_devices.client=?",
 										[device.identifier, row_client.clientId],
 										function(err, row2) {
 											if( row2 && row2.validationKey==null && row2.validationTime==null)
