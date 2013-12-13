@@ -97,10 +97,6 @@ function respondToJSON(req, res, out, statusCode) {
 	res.writeHeader(200);
 	res.write( towrite , "binary");
 	res.end();
-	var size;
-
-
-	
 }
 
 function respond(req, res, out, statusCode) {
@@ -254,50 +250,51 @@ app.post('/device/link',function (req,res) {
 
 	if(!req.body.nameLink ||!req.body.validationKey || !req.signedCookies.clientId)
 		respondToJSON( req, res, {error: 'Bad request. No Login?'}, 400 );
+	else
+	{
+		var client = new dbLib.Client();
+		var device = new dbLib.Device();
+		device.ip=req.connection.remoteAddress;
+		client.id=req.signedCookies.clientId;
+			
+		var linkName = req.body.nameLink;
+		var validationKey = req.body.validationKey;
 
 
-	var client = new dbLib.Client();
-	var device = new dbLib.Device();
-	device.ip=req.connection.remoteAddress;
-	client.id=req.signedCookies.clientId;
-		
-	var linkName = req.body.nameLink;
-	var validationKey = req.body.validationKey;
 
+		db.linkDevice(client, device, linkName, validationKey, function(err,row) {
+			var out = {};
+			var code;
 
-
-	db.linkDevice(client, device, linkName, validationKey, function(err,row) {
-		var out = {};
-		var code;
-
-		if( err ) {
-			code = 500;
-			out.id = -1;
-			out.error = 'Impossible to find device. Possible DB Error.';
-
-			console.log('Error login client: ' + err);
-		}
-		else {
-			code = 200;
-			if (!row)
-			{
+			if( err ) {
+				code = 500;
 				out.id = -1;
-				out.error = 'Wrong key or expired. Try login again.';
-				
-				console.log('Fail link');
-			}
-			else
-			{
-				out = row;
-				//login was completely sucessfull, returned key/token
-				console.log('Logged in key : ' + row);
-				res.cookie('sessionKey', row, { maxAge: 900000, signed: true });
-			}
-		}
+				out.error = 'Impossible to find device. Possible DB Error.';
 
-		respondToJSON( req, res, out, code );
+				console.log('Error login client: ' + err);
+			}
+			else {
+				code = 200;
+				if (!row)
+				{
+					out.id = -1;
+					out.error = 'Wrong key or expired. Try login again.';
+					
+					console.log('Fail link');
+				}
+				else
+				{
+					out = row;
+					//login was completely sucessfull, returned key/token
+					console.log('Logged in key : ' + row);
+					res.cookie('sessionKey', row, { maxAge: 900000, signed: true });
+				}
+			}
 
-	});
+			respondToJSON( req, res, out, code );
+
+		});
+	}
 });
 
 
@@ -312,71 +309,72 @@ app.post('/product/buy',function (req,res) {
 
 	if(!req.body.product || !req.body.address || !req.signedCookies.sessionKey || !req.signedCookies.clientId)
 		respondToJSON( req, res, {error: 'Bad request. No Login?'}, 400 );
+	else
+	{
+		var client = new dbLib.Client();
+		var device = new dbLib.Device();
+		var product = new dbLib.Product();
+		device.ip=req.connection.remoteAddress;
+		client.id=req.signedCookies.clientId;
+		product.id=req.body.product;
+		var sessionKey = req.signedCookies.sessionKey;
+		var address = req.body.address;
 
 
-	var client = new dbLib.Client();
-	var device = new dbLib.Device();
-	var product = new dbLib.Product();
-	device.ip=req.connection.remoteAddress;
-	client.id=req.signedCookies.clientId;
-	product.id=req.body.product;
-	var sessionKey = req.signedCookies.sessionKey;
-	var address = req.body.address;
-
-
-	console.log(client, '-', device,'-', product,'-', sessionKey);
-	db.buyProduct(client, device, product, sessionKey, address, function(err,row,result) {
-		var out = {};
-		var code;
-		if( err ) {
-			code = 500;
-			out.id = -1;
-			out.error = 'Impossible to buy product. Possible DB Error.';
-			console.log('Error buy product: ' + err);
-		}
-		else {
-			code = 200;
-			if (!row && !result)
-			{
+		console.log(client, '-', device,'-', product,'-', sessionKey);
+		db.buyProduct(client, device, product, sessionKey, address, function(err,row,result) {
+			var out = {};
+			var code;
+			if( err ) {
+				code = 500;
 				out.id = -1;
-				out.error = 'Wrong key or expired. Try login again.';
-				console.log('Fail buy');
+				out.error = 'Impossible to buy product. Possible DB Error.';
+				console.log('Error buy product: ' + err);
 			}
-			else
-			{
-				out = row;
-				if(result=='NEED_CONFIRM')
+			else {
+				code = 200;
+				if (!row && !result)
 				{
-					console.log('Buy needs confirmation');
-
-					var commandlinecommand = 'mailsend.exe -to ' + out.email +' -from r.aguiar9080@gmail.com  -ssl -smtp smtp.gmail.com -port 465 -sub "TOKEN" -M "CONFIRM: ' + out.confirmationCode + '  -  CANCEL: ' + out.cancelationCode + '" +cc +bc -q -auth-plain -user "r.aguiar9080" -pass "d80Szh4312365413"';
-
-					console.log("commandlinecommand: " + commandlinecommand);
-
-
-					child = exec(commandlinecommand,
-					  function (error, stdout, stderr) {
-					    console.log('stdout: ' + stdout);
-					    console.log('stderr: ' + stderr);
-					    if (error !== null) {
-					      console.log('exec error: ' + error);
-					    }
-					});
-					out = {};
-					out = row.message + 'SUSPICIOUS. I NEED CONFIRMATION';
+					out.id = -1;
+					out.error = 'Wrong key or expired. Try login again.';
+					console.log('Fail buy');
 				}
 				else
 				{
 					out = row;
-					//buy was completely sucessfull
-					console.log('Buy sucessfull : ' + out);
+					if(result=='NEED_CONFIRM')
+					{
+						console.log('Buy needs confirmation');
+
+						var commandlinecommand = 'mailsend.exe -to ' + out.email +' -from r.aguiar9080@gmail.com  -ssl -smtp smtp.gmail.com -port 465 -sub "TOKEN" -M "CONFIRM: ' + out.confirmationCode + '  -  CANCEL: ' + out.cancelationCode + '" +cc +bc -q -auth-plain -user "r.aguiar9080" -pass "d80Szh4312365413"';
+
+						console.log("commandlinecommand: " + commandlinecommand);
+
+
+						child = exec(commandlinecommand,
+						  function (error, stdout, stderr) {
+						    console.log('stdout: ' + stdout);
+						    console.log('stderr: ' + stderr);
+						    if (error !== null) {
+						      console.log('exec error: ' + error);
+						    }
+						});
+						out = {};
+						out = row.message + 'SUSPICIOUS. I NEED CONFIRMATION';
+					}
+					else
+					{
+						out = row;
+						//buy was completely sucessfull
+						console.log('Buy sucessfull : ' + out);
+					}
 				}
 			}
-		}
 
-		respondToJSON( req, res, out, code );
+			respondToJSON( req, res, out, code );
 
-	});
+		});
+	}
 });
 
 app.get('/verify.html', function (req,res) {
@@ -390,43 +388,44 @@ app.post('/product/verify',function (req,res) {
 
 	if(!req.body.code || !req.signedCookies.sessionKey || !req.signedCookies.clientId)
 		respondToJSON( req, res, {error: 'Bad request. No Login?'}, 400 );
+	else
+	{
+		var client = new dbLib.Client();
+		var device = new dbLib.Device();
+		device.ip=req.connection.remoteAddress;
+		client.id=req.signedCookies.clientId;
+		var sessionKey = req.signedCookies.sessionKey;
+		var code = req.body.code;
 
-
-	var client = new dbLib.Client();
-	var device = new dbLib.Device();
-	device.ip=req.connection.remoteAddress;
-	client.id=req.signedCookies.clientId;
-	var sessionKey = req.signedCookies.sessionKey;
-	var code = req.body.code;
-
-	db.confirmBuy(client, device, code, sessionKey, function(err,row) {
-		var out = {};
-		var code;
-		if( err ) {
-			code = 500;
-			out.id = -1;
-			out.error = 'Impossible to verify code. Possible DB Error.';
-			console.log('Error verifying product: ' + err);
-		}
-		else {
-			code = 200;
-			if (!row)
-			{
+		db.confirmBuy(client, device, code, sessionKey, function(err,row) {
+			var out = {};
+			var code;
+			if( err ) {
+				code = 500;
 				out.id = -1;
-				out.error = 'Wrong key or expired. Try login again.';
-				console.log('Fail buy');
+				out.error = 'Impossible to verify code. Possible DB Error.';
+				console.log('Error verifying product: ' + err);
 			}
-			else
-			{
-				out=row;
-				console.log('Reedem sucessfull : ' + out);
-				
+			else {
+				code = 200;
+				if (!row)
+				{
+					out.id = -1;
+					out.error = 'Wrong key or expired. Try login again.';
+					console.log('Fail buy');
+				}
+				else
+				{
+					out=row;
+					console.log('Reedem sucessfull : ' + out);
+					
+				}
 			}
-		}
 
-		respondToJSON( req, res, out, code );
+			respondToJSON( req, res, out, code );
 
-	});
+		});
+	}
 });
 
 
