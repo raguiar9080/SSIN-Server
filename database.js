@@ -171,8 +171,7 @@ sqliteDB.prototype.login=function(client, device, callback)
 													ticketConn.run("INSERT INTO clients_devices (validationKey, validationTime, client, device) VALUES (?, ?, ?, ?);",
 														[randomKey, timestamp(), row_client.clientId, device.id],
 														function(err){
-															//TODO send msg
-
+															row_client.key=randomKey;
 															callback(err,row_client,'USER');
 														});
 												}
@@ -188,7 +187,7 @@ sqliteDB.prototype.login=function(client, device, callback)
 													ticketConn.run("UPDATE clients_devices SET validationKey = ?, validationTime = ?, client = ?, device =? WHERE linkId=?;",
 														[randomKey, timestamp(), row_client.clientId, Number(device.id), row2.linkId],
 														function(err){
-															//TODO send msg
+															row_client.key=randomKey;
 															callback(err,row_client,'USER');
 														});
 												}
@@ -256,7 +255,8 @@ sqliteDB.prototype.buyProduct=function(client, device, product, sessionKey, addr
 			
 			else
 			{
-				var out = '';
+				var out = {};
+				out.message = "";
 				var distance = 0;
 				if(row_client_devices.address != address)
 					distance = 1000;
@@ -264,23 +264,24 @@ sqliteDB.prototype.buyProduct=function(client, device, product, sessionKey, addr
 				if(distance>200 || product.id==1)
 				{
 					if(distance >200 )
-						out += 'Addressess don\'t match or too apart. ';
+						out.message += 'Addressess don\'t match or too apart. ';
 					if(product.id==1)
-						out += 'Item is suspicious. ';
+						out.message += 'Item is suspicious. ';
 
-					out+= 'Sending confirmation and cancelation code.';
+					out.message+= 'Sending confirmation and cancelation code.';
 
 					//buy product but needs confirmation to send
-					var confirmationCode = Math.random().toString(36).substr(2, 5);
-					console.log('confirmationCode: ', confirmationCode);
-					var cancelationCode = Math.random().toString(36).substr(2, 5);
-					console.log('cancelationCode: ', cancelationCode);
+					out.confirmationCode = Math.random().toString(36).substr(2, 5);
+					console.log('confirmationCode: ', out.confirmationCode);
+					out.cancelationCode = Math.random().toString(36).substr(2, 5);
+					console.log('cancelationCode: ', out.cancelationCode);
+					out.email = row_client_devices.email;
 														
 														
 					ticketConn.run("INSERT INTO clients_products (client, product, date, confirmationCode, cancelationCode) VALUES (?,?,?,?,?);",
-						[client.id,product.id,timestamp(), confirmationCode, cancelationCode],
+						[client.id,product.id,timestamp(), out.confirmationCode, out.cancelationCode],
 						function(err){
-							callback(err,out,'NEED_CONFIRM.');
+							callback(err,out,'NEED_CONFIRM');
 					});
 				}
 				else

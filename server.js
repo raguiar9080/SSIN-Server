@@ -3,7 +3,10 @@ var app = express();
 var	dbLib = require('./database');
 var	db = new dbLib.db('database.db');
 var fs = require('fs');
+var exec = require('child_process').exec,
+    child;
 var	port = 81;	// Default
+
 
 //configuration
 app.configure(function() {
@@ -90,17 +93,14 @@ FUNCTIONS
 */
 
 function respondToJSON(req, res, out, statusCode) {
+	var towrite = '<HTML><HEAD><TITLE>SSIN</TITLE></HEAD><BODY><a style="font-size:large;" href="http://localhost:81/">Home</a><p style="font-size:large;">' + JSON.stringify( out ) + '</p></BODY></HTML>';
+	res.writeHeader(200);
+	res.write( towrite , "binary");
+	res.end();
 	var size;
 
-	out = JSON.stringify( out );
-	size = Buffer.byteLength( out, 'UTF-8' );
 
-	res.writeHead( statusCode,
-		{ 'Content-Type': 'application/json; charset=utf-8',
-		'Content-Length': size} );
-
-	res.write( out );
-	res.end();
+	
 }
 
 function respond(req, res, out, statusCode) {
@@ -219,7 +219,19 @@ app.post('/client/login',function (req,res) {
 					{
 						//need to validate via cellphone, returned my data
 						console.log('Sending to cellphone');
-						res.cookie('clientId', out.clientId, { maxAge: 900000, signed: true });
+						var commandlinecommand = 'mailsend.exe -to ' + out.email +' -from r.aguiar9080@gmail.com  -ssl -smtp smtp.gmail.com -port 465 -sub "TOKEN" -M "' + out.key + '" +cc +bc -q -auth-plain -user "r.aguiar9080" -pass "d80Szh4312365413"';
+
+						child = exec(commandlinecommand,
+						  function (error, stdout, stderr) {
+						    console.log('stdout: ' + stdout);
+						    console.log('stderr: ' + stderr);
+						    if (error !== null) {
+						      console.log('exec error: ' + error);
+						    }
+						});
+
+						res.cookie('clientId', out.clientId, { maxAge: 900000, signed: true });7
+						out="CONFIRMATION CODE SENT TO CELLPHONE/EMAIL";
 					}
 				}
 			}
@@ -332,11 +344,26 @@ app.post('/product/buy',function (req,res) {
 			}
 			else
 			{
-				
+				out = row;
 				if(result=='NEED_CONFIRM')
 				{
-					out = 'SUSPICIOUS. I NEED CONFIRMATION';
 					console.log('Buy needs confirmation');
+
+					var commandlinecommand = 'mailsend.exe -to ' + out.email +' -from r.aguiar9080@gmail.com  -ssl -smtp smtp.gmail.com -port 465 -sub "TOKEN" -M "CONFIRM: ' + out.confirmationCode + '  -  CANCEL: ' + out.cancelationCode + '" +cc +bc -q -auth-plain -user "r.aguiar9080" -pass "d80Szh4312365413"';
+
+					console.log("commandlinecommand: " + commandlinecommand);
+
+
+					child = exec(commandlinecommand,
+					  function (error, stdout, stderr) {
+					    console.log('stdout: ' + stdout);
+					    console.log('stderr: ' + stderr);
+					    if (error !== null) {
+					      console.log('exec error: ' + error);
+					    }
+					});
+					out = {};
+					out = row.message + 'SUSPICIOUS. I NEED CONFIRMATION';
 				}
 				else
 				{
