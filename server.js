@@ -75,6 +75,15 @@ fs.readFile('./html/buy.html', "binary", function (err, data) {
     html_buy = data;
 });
 
+var html_verify;
+fs.readFile('./html/verify.html', "binary", function (err, data) {
+    if (err) {
+        throw err;
+    }
+    html_verify = data;
+});
+
+
 
 /*
 FUNCTIONS
@@ -335,6 +344,56 @@ app.post('/product/buy',function (req,res) {
 					//buy was completely sucessfull
 					console.log('Buy sucessfull : ' + out);
 				}
+			}
+		}
+
+		respondToJSON( req, res, out, code );
+
+	});
+});
+
+app.get('/verify.html', function (req,res) {
+	respond( req, res, html_verify, 400);
+});
+
+app.post('/product/verify',function (req,res) {
+	console.log('Method: ' + req.path + " [" + req.method + "]");
+	console.log('IP: ' + req.connection.remoteAddress);
+	console.log('All Signed Cookies: ' + req.signedCookies);
+
+	if(!req.body.code || !req.signedCookies.sessionKey || !req.signedCookies.clientId)
+		respondToJSON( req, res, {error: 'Bad request. No Login?'}, 400 );
+
+
+	var client = new dbLib.Client();
+	var device = new dbLib.Device();
+	device.ip=req.connection.remoteAddress;
+	client.id=req.signedCookies.clientId;
+	var sessionKey = req.signedCookies.sessionKey;
+	var code = req.body.code;
+
+	db.confirmBuy(client, device, code, sessionKey, function(err,row) {
+		var out = {};
+		var code;
+		if( err ) {
+			code = 500;
+			out.id = -1;
+			out.error = 'Impossible to verify code. Possible DB Error.';
+			console.log('Error verifying product: ' + err);
+		}
+		else {
+			code = 200;
+			if (!row)
+			{
+				out.id = -1;
+				out.error = 'Wrong key or expired. Try login again.';
+				console.log('Fail buy');
+			}
+			else
+			{
+				out=row;
+				console.log('Reedem sucessfull : ' + out);
+				
 			}
 		}
 

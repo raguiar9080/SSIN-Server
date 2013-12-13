@@ -299,7 +299,7 @@ sqliteDB.prototype.buyProduct=function(client, device, product, sessionKey, addr
 
 sqliteDB.prototype.confirmBuy=function(client, device, code, sessionKey, callback)
 {
-	console.log("confirming buy product: ", product.id, ' for client: ', client.id);
+	console.log('confirming buy product for client: ', client.id);
 	if( typeof callback !== 'function')
 		throw new Error('Callback is not a function');
 
@@ -307,37 +307,38 @@ sqliteDB.prototype.confirmBuy=function(client, device, code, sessionKey, callbac
 		[client.id, sessionKey, device.ip],
 		function(err, row_client_devices) {
 			if(!row_client_devices)
-				callback(err, null, null);
+				callback(err, null);
 			
 			else
 			{
-				var distance = 0;
-				//TODO check address
-				if(distance>200 || product.id==1)
-				{
-					//buy product but needs confirmation to send
-					var confirmationCode = Math.random().toString(36).substr(2, 5);
-					console.log('confirmationCode: ', confirmationCode);
-					var cancelationCode = Math.random().toString(36).substr(2, 5);
-					console.log('cancelationCode: ', cancelationCode);
-														
-														
-					ticketConn.run("INSERT INTO clients_products (client, product, date, confirmationCode, cancelationCode) VALUES (?,?,?,?,?);",
-						[client.id,product.id,timestamp(), confirmationCode, cancelationCode],
-						function(err){
-							callback(err,null,'NEED_CONFIRM.');
+				var time=moment().subtract('minutes',5).format("YYYY-MM-DDTHH:mm:ss");
+
+				ticketConn.get("SELECT * FROM clients_products WHERE client = ? AND ((confirmationCode = ? AND date>?) OR cancelationCode = ?) ",
+					[client.id, code, time, code],
+					function(err,row_product) {
+						if(row_product && row_product.confirmationCode == code)
+						{
+							ticketConn.run("UPDATE clients_products SET cancelationCode = ?, confirmationCode = ? WHERE buyId=?",
+								[null, null, row_product.buyId],
+								function(err){
+									callback(err, 'CONFIRMED');
+								});
+						}
+						else if(row_product && row_product.cancelationCode == code)
+						{
+							ticketConn.run("DELETE FROM clients_products WHERE buyId=?",
+								[row_product.buyId],
+								function(err){
+									callback(err, 'CANCELED');
+								});
+						}
+						else
+						{
+							callback(err,null);
+							
+						}
+
 					});
-				}
-				else
-				{
-					//buy product
-					console.log('inserting product');
-					ticketConn.run("INSERT INTO clients_products (client, product, date) VALUES (?,?,?);",
-						[client.id,product.id,timestamp()],
-						function(err){
-							callback(err, this.lastID,'OK');
-					});
-				}
 			}
 	});
 }
